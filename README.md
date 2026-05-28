@@ -1,3 +1,5 @@
+![Repo Poster](Repo.png)
+
 # StreamingScript
 
 StreamingScript is a lightweight PHP + FFmpeg backend that converts uploaded videos into HLS and serves an embeddable player URL.
