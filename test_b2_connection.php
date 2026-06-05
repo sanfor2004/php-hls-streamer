@@ -6,8 +6,9 @@ declare(strict_types=1);
  * BACKBLAZE B2 CONNECTIVITY TESTER (test_b2_connection.php)
  * =================================================================================
  * Standalone script to verify authorization and bucket access for B2 Cloud Storage.
+ * Dynamically queries active credentials from database.sqlite to protect keys.
  *
- * Usage: php test_b2_connection.php {application_key}
+ * Usage: php test_b2_connection.php
  * =================================================================================
  */
 
@@ -15,21 +16,34 @@ if (PHP_SAPI !== 'cli') {
     die("Error: This script can only be run via CLI.\n");
 }
 
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'db.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'b2.php';
 
-// Hardcoded details from user input
-$keyId = '003cd8abcad0cb20000000001';
-$bucketId = 'dcbd188aeb0cbabd90cc0b12';
-$bucketName = 'gowatch';
-
-// Retrieve Application Key from CLI argument
-if ($argc < 2 || empty($argv[1])) {
-    echo "Error: Missing Application Key.\n";
-    echo "Usage: php test_b2_connection.php YOUR_SECRET_APPLICATION_KEY\n";
-    exit(1);
+// 1. Fetch B2 credentials from database settings table
+try {
+    $pdo = getDatabaseConnection('dev');
+    $stmt = $pdo->query("SELECT * FROM `settings`");
+    $settings = [];
+    if ($stmt) {
+        foreach ($stmt->fetchAll() as $row) {
+            $settings[$row['key']] = $row['value'];
+        }
+    }
+} catch (Exception $e) {
+    die("Error: Database connection failed: " . $e->getMessage() . "\n");
 }
 
-$applicationKey = trim($argv[1]);
+$keyId = $settings['b2_key_id'] ?? '';
+$applicationKey = $settings['b2_application_key'] ?? '';
+$bucketId = $settings['b2_bucket_id'] ?? '';
+$bucketName = $settings['b2_bucket_name'] ?? '';
+
+// 2. Validate credentials completeness
+if (empty($keyId) || empty($applicationKey) || empty($bucketId) || empty($bucketName)) {
+    echo "❌ Error: B2 credentials are not fully configured in your dashboard settings.\n";
+    echo "Please visit http://127.0.0.1:8080/settings.php to configure Key ID, Application Key, Bucket ID, and Bucket Name first.\n";
+    exit(1);
+}
 
 echo "Testing connection to Backblaze B2...\n";
 echo "Bucket Name: {$bucketName}\n";

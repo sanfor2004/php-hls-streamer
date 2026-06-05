@@ -225,4 +225,58 @@ class B2Client
 
         throw new Exception("B2 file transmission completely failed after {$maxAttempts} attempts. Last error: " . $lastException->getMessage());
     }
+
+    /**
+     * Downloads/Streams a file from B2 directly to the output buffer (zero-memory overhead).
+     */
+    public function downloadFile(string $remotePath): int
+    {
+        $this->authorize();
+
+        $cleanRemotePath = ltrim(str_replace('\\', '/', $remotePath), '/');
+        $pathParts = explode('/', $cleanRemotePath);
+        $encodedParts = array_map('rawurlencode', $pathParts);
+        $safeRemotePath = implode('/', $encodedParts);
+
+        $url = $this->getDownloadUrlPrefix() . '/' . $safeRemotePath;
+
+        $ch = curl_init($url);
+        if ($ch === false) {
+            throw new Exception("Unable to initialize cURL handle for B2 file download.");
+        }
+
+        // Set headers
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Authorization: ' . $this->authToken
+        ]);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 60);
+
+        // Forward response headers to client
+        curl_setopt($ch, CURLOPT_HEADERFUNCTION, function($ch, $headerLine) {
+            $trimmed = trim($headerLine);
+            if (stripos($trimmed, 'Content-Type:') === 0 || 
+                stripos($trimmed, 'Content-Length:') === 0 || 
+                stripos($trimmed, 'Accept-Ranges:') === 0 ||
+                stripos($trimmed, 'Content-Range:') === 0 ||
+                stripos($trimmed, 'HTTP/') === 0) {
+                header($trimmed);
+            }
+            return strlen($headerLine);
+        });
+
+        // Forward response body immediately
+        curl_setopt($ch, CURLOPT_WRITEFUNCTION, function($ch, $bodyChunk) {
+            echo $bodyChunk;
+            flush();
+            return strlen($bodyChunk);
+        });
+
+        curl_exec($ch);
+        $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        return $status;
+    }
 }
