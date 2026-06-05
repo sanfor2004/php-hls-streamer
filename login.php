@@ -64,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Zenith Stream Engine - Portal Login</title>
-  <link rel="icon" href="data:,">
+  <link rel="icon" type="image/png" href="favicon.png">
 
   <!-- Premium Fonts Setup -->
   <link rel="preconnect" href="https://fonts.googleapis.com">

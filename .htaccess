@@ -18,11 +18,8 @@
     RewriteRule ^([^.]+)\.php(.*)$ /$1$2 [R=301,L]
 
     # 3. Internally map extensionless requests to physical PHP files
-    # Exclude existing physical directories and files
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_FILENAME} !-f
-    # Check if the first segment of the path matches a physical .php file
-    RewriteCond %{DOCUMENT_ROOT}/$1.php -f
-    # Rewrite internally and append the remaining path as PATH_INFO
-    RewriteRule ^([^/]+)(/.*)?$ $1.php$2 [L,QSA]
+    # Map whitelisted routes to their physical PHP files
+    RewriteRule ^(index|settings|upload|ads|login|logout|api|stream|b2_gateway)(/.*)?$ $1.php$2 [L,QSA]
 </IfModule>

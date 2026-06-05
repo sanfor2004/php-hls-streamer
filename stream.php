@@ -82,8 +82,7 @@ header('Expires: Thu, 01 Jan 1970 00:00:00 GMT');
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title><?php echo htmlspecialchars($stream ? $stream['title'] : 'Stream Not Found'); ?> - Bespoke Player</title>
-  <!-- Suppress browser favicon 404 request -->
-  <link rel="icon" href="data:,">
+  <link rel="icon" type="image/png" href="favicon.png">
 
   <!-- Premium Fonts Setup -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -433,7 +432,11 @@ header('Expires: Thu, 01 Jan 1970 00:00:00 GMT');
   <script>
     // Dynamic PHP-to-JS configurations bridge
     window.PLAYER_CONFIG = {
-      hlsPlaylistUrl: <?php echo json_encode("b2_gateway/{$streamId}/master.m3u8"); ?>,
+      hlsPlaylistUrl: <?php 
+        $isLocalDev = (PHP_SAPI === 'cli-server' || ($_SERVER['SERVER_PORT'] ?? '') === '8080' || strpos($_SERVER['HTTP_HOST'] ?? '', '127.0.0.1') !== false || strpos($_SERVER['HTTP_HOST'] ?? '', 'localhost') !== false);
+        $gatewayUrl = $isLocalDev ? 'b2_gateway.php' : 'b2_gateway';
+        echo json_encode("{$gatewayUrl}/{$streamId}/master.m3u8"); 
+      ?>,
       useCustomControls: <?php echo USE_CUSTOM_CONTROLS ? 'true' : 'false'; ?>,
       availableResolutions: <?php
       $raw = $stream['resolutions_selected'] ?? '[]';

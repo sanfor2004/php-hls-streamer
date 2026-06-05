@@ -89,6 +89,7 @@ function renderLayoutHeader(?string $dbError, array $settings, string $dbFile, s
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>Zenith Dynamic Transcoder & Streaming Console</title>
+      <link rel="icon" type="image/png" href="favicon.png">
       
       <!-- Premium Fonts Setup -->
       <link rel="preconnect" href="https://fonts.googleapis.com">
