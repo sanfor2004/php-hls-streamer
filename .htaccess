@@ -1,0 +1,23 @@
+# =================================================================================
+# ZENITH-TIER APACHE REWRITE RULE DECK (.htaccess)
+# =================================================================================
+# Manages clean URLs, hides server file extensions, and preserves query parameters.
+# =================================================================================
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    # 1. Prevent loop on rewritten files
+    RewriteCond %{ENV:REDIRECT_STATUS} ^$
+
+    # 2. Redirect external requests from .php to extensionless (SEO canonicalization)
+    RewriteCond %{THE_REQUEST} ^[A-Z]{3,9}\ /([^\ ]+)\.php
+    RewriteRule ^([^\ ]+)\.php$ /$1 [R=301,L]
+
+    # 3. Internally map extensionless requests to the physical PHP files
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME}.php -f
+    RewriteRule ^([^/]+)$ $1.php [L,QSA]
+</IfModule>
