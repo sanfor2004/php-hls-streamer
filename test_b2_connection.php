@@ -41,7 +41,7 @@ $bucketName = $settings['b2_bucket_name'] ?? '';
 // 2. Validate credentials completeness
 if (empty($keyId) || empty($applicationKey) || empty($bucketId) || empty($bucketName)) {
     echo "❌ Error: B2 credentials are not fully configured in your dashboard settings.\n";
-    echo "Please visit http://127.0.0.1:8080/settings.php to configure Key ID, Application Key, Bucket ID, and Bucket Name first.\n";
+    echo "Please visit http://127.0.0.1:8080/settings to configure Key ID, Application Key, Bucket ID, and Bucket Name first.\n";
     exit(1);
 }
 

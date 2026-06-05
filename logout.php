@@ -33,5 +33,5 @@ if (ini_get("session.use_cookies")) {
 session_destroy();
 
 // Redirect back to login portal with success indicator
-header('Location: login.php?logout=1');
+header('Location: login?logout=1');
 exit;

@@ -433,7 +433,7 @@ header('Expires: Thu, 01 Jan 1970 00:00:00 GMT');
   <script>
     // Dynamic PHP-to-JS configurations bridge
     window.PLAYER_CONFIG = {
-      hlsPlaylistUrl: <?php echo json_encode("b2_gateway.php/{$streamId}/master.m3u8"); ?>,
+      hlsPlaylistUrl: <?php echo json_encode("b2_gateway/{$streamId}/master.m3u8"); ?>,
       useCustomControls: <?php echo USE_CUSTOM_CONTROLS ? 'true' : 'false'; ?>,
       availableResolutions: <?php
       $raw = $stream['resolutions_selected'] ?? '[]';

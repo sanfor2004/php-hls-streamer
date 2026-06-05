@@ -2,6 +2,7 @@
 # ZENITH-TIER APACHE REWRITE RULE DECK (.htaccess)
 # =================================================================================
 # Manages clean URLs, hides server file extensions, and preserves query parameters.
+# Supports path-info routes (e.g. /b2_gateway/{id}/{file}).
 # =================================================================================
 
 <IfModule mod_rewrite.c>
@@ -12,12 +13,16 @@
     RewriteCond %{ENV:REDIRECT_STATUS} ^$
 
     # 2. Redirect external requests from .php to extensionless (SEO canonicalization)
-    RewriteCond %{THE_REQUEST} ^[A-Z]{3,9}\ /([^\ ]+)\.php
-    RewriteRule ^([^\ ]+)\.php$ /$1 [R=301,L]
+    # Handles both standard scripts and scripts with path-info
+    RewriteCond %{THE_REQUEST} ^[A-Z]{3,9}\ /([^.]+)\.php([^?\ ]*)
+    RewriteRule ^([^.]+)\.php(.*)$ /$1$2 [R=301,L]
 
-    # 3. Internally map extensionless requests to the physical PHP files
+    # 3. Internally map extensionless requests to physical PHP files
+    # Exclude existing physical directories and files
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteCond %{REQUEST_FILENAME}.php -f
-    RewriteRule ^([^/]+)$ $1.php [L,QSA]
+    # Check if the first segment of the path matches a physical .php file
+    RewriteCond %{DOCUMENT_ROOT}/$1.php -f
+    # Rewrite internally and append the remaining path as PATH_INFO
+    RewriteRule ^([^/]+)(/.*)?$ $1.php$2 [L,QSA]
 </IfModule>

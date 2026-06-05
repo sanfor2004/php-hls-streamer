@@ -15,7 +15,7 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'auth.php';
 
 // Redirect to dashboard index if session is already active
 if (isLoggedIn()) {
-    header('Location: index.php');
+    header('Location: index');
     exit;
 }
 
@@ -47,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['user_id'] = $user['id'];
                 $_SESSION['username'] = $user['username'];
 
-                header('Location: index.php');
+                header('Location: index');
                 exit;
             } else {
                 $errorMsg = 'Incorrect username or password.';
@@ -196,7 +196,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <!-- Login credentials Card -->
     <div class="glassmorphic rounded-3xl p-8 shadow-2xl">
-      <form action="login.php" method="POST" class="flex flex-col gap-5">
+      <form action="login" method="POST" class="flex flex-col gap-5">
         
         <div class="flex flex-col gap-1.5">
           <label for="username" class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Username</label>

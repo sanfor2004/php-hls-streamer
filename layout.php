@@ -243,10 +243,10 @@ function renderLayoutHeader(?string $dbError, array $settings, string $dbFile, s
           <nav class="flex flex-col gap-2">
             <?php
             $tabsDef = [
-                'videos' => ['label' => 'Videos Registry', 'icon' => 'bi-collection-play', 'file' => 'index.php'],
-                'settings' => ['label' => 'System Settings', 'icon' => 'bi-sliders', 'file' => 'settings.php'],
-                'upload' => ['label' => 'Ingestion Portal', 'icon' => 'bi-cloud-arrow-up', 'file' => 'upload.php'],
-                'ads' => ['label' => 'VAST Ad Scheduler', 'icon' => 'bi-megaphone', 'file' => 'ads.php']
+                'videos' => ['label' => 'Videos Registry', 'icon' => 'bi-collection-play', 'file' => 'index'],
+                'settings' => ['label' => 'System Settings', 'icon' => 'bi-sliders', 'file' => 'settings'],
+                'upload' => ['label' => 'Ingestion Portal', 'icon' => 'bi-cloud-arrow-up', 'file' => 'upload'],
+                'ads' => ['label' => 'VAST Ad Scheduler', 'icon' => 'bi-megaphone', 'file' => 'ads']
             ];
             foreach ($tabsDef as $tabKey => $tabInfo):
                 $isActive = ($activeTab === $tabKey);
@@ -277,7 +277,7 @@ function renderLayoutHeader(?string $dbError, array $settings, string $dbFile, s
               <p class="text-xs font-semibold text-white truncate"><?php echo htmlspecialchars($_SESSION['username'] ?? 'Admin'); ?></p>
               <span class="text-[9px] text-brand-orange font-mono font-bold uppercase tracking-wider">Authenticated</span>
             </div>
-            <a href="logout.php" class="w-7 h-7 rounded-lg bg-slate-800 hover:bg-rose-950/20 hover:text-rose-500 border border-slate-700/60 flex items-center justify-center text-slate-400 transition-colors" title="Logout Session">
+            <a href="logout" class="w-7 h-7 rounded-lg bg-slate-800 hover:bg-rose-950/20 hover:text-rose-500 border border-slate-700/60 flex items-center justify-center text-slate-400 transition-colors" title="Logout Session">
               <i class="bi bi-box-arrow-right text-xs"></i>
             </a>
           </div>

@@ -15,12 +15,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // -------------------------------------------------------------
   window.switchTab = function (tabId) {
     const files = {
-      videos: 'index.php',
-      settings: 'settings.php',
-      upload: 'upload.php',
-      ads: 'ads.php'
+      videos: 'index',
+      settings: 'settings',
+      upload: 'upload',
+      ads: 'ads'
     };
-    window.location.href = files[tabId] || 'index.php';
+    window.location.href = files[tabId] || 'index';
   };
 
   // -------------------------------------------------------------
@@ -138,7 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
       formData.set('add_top_quality', '0');
     }
     
-    fetch('api.php?action=save_settings', {
+    fetch('api?action=save_settings', {
       method: 'POST',
       body: formData
     })
@@ -473,7 +473,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function transmitChunkAJAX(formData) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open('POST', 'api.php?action=upload_chunk', true);
+      xhr.open('POST', 'api?action=upload_chunk', true);
 
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
@@ -526,7 +526,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const tableBody = document.getElementById('streams-table-body');
   
   window.refreshStreamsTable = function () {
-    fetch('api.php?action=list')
+    fetch('api?action=list')
       .then(res => res.json())
       .then(data => {
         if (!tableBody) return;
@@ -745,7 +745,7 @@ document.addEventListener('DOMContentLoaded', () => {
     payload.append('id', streamId);
     payload.append('title', newTitle);
 
-    fetch('api.php?action=update_stream', {
+    fetch('api?action=update_stream', {
       method: 'POST',
       body: payload
     })
@@ -779,7 +779,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const payload = new FormData();
     payload.append('id', streamId);
 
-    fetch('api.php?action=delete_stream', {
+    fetch('api?action=delete_stream', {
       method: 'POST',
       body: payload
     })
@@ -841,7 +841,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     const formData = new FormData(form);
     
-    fetch('api.php?action=add_ad', {
+    fetch('api?action=add_ad', {
       method: 'POST',
       body: formData
     })
@@ -862,7 +862,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const adsTableBody = document.getElementById('ads-table-body');
   
   window.refreshAdsTable = function () {
-    fetch('api.php?action=list_ads')
+    fetch('api?action=list_ads')
       .then(res => res.json())
       .then(data => {
         if (!adsTableBody) return;
@@ -919,7 +919,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const payload = new FormData();
     payload.append('id', adId);
 
-    fetch('api.php?action=delete_ad', {
+    fetch('api?action=delete_ad', {
       method: 'POST',
       body: payload
     })
@@ -947,7 +947,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!modalOverlay || !previewIframe || !modalTitle || !modalCard) return;
     
     modalTitle.textContent = `Streaming Preview: ${streamTitle}`;
-    previewIframe.src = `stream.php?id=${streamId}`;
+    previewIframe.src = `stream?id=${streamId}`;
     
     modalOverlay.classList.remove('opacity-0', 'pointer-events-none');
     modalOverlay.classList.add('opacity-100');
@@ -985,7 +985,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // CLIPBOARD UTILITY FUNCTIONS
   // -------------------------------------------------------------
   window.copyIframeCode = function (streamId) {
-    const embedCode = `<iframe src="${window.location.origin}/stream.php?id=${streamId}" width="640" height="360" frameborder="0" allowfullscreen></iframe>`;
+    const embedCode = `<iframe src="${window.location.origin}/stream?id=${streamId}" width="640" height="360" frameborder="0" allowfullscreen></iframe>`;
     navigator.clipboard.writeText(embedCode)
       .then(() => {
         showToast("Iframe embed code copied!", "bi-code-slash");
@@ -1008,7 +1008,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   window.copyStreamLink = function (streamId) {
-    const streamLink = `${window.location.origin}/stream.php?id=${streamId}`;
+    const streamLink = `${window.location.origin}/stream?id=${streamId}`;
     navigator.clipboard.writeText(streamLink)
       .then(() => {
         showToast("Stream play link copied!", "bi-link-45deg");
@@ -1051,7 +1051,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const formData = new FormData(form);
 
-    fetch('api.php?action=change_password', {
+    fetch('api?action=change_password', {
       method: 'POST',
       body: formData
     })
@@ -1086,7 +1086,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // BOOT INITIALIZATION SCRIPT
   // -------------------------------------------------------------
   // Fetch active settings values from database to render Ingestion Portal checkbox options
-  fetch('api.php?action=get_settings')
+  fetch('api?action=get_settings')
     .then(res => res.json())
     .then(data => {
       if (data && data.renditions) {
