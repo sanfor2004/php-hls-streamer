@@ -583,8 +583,11 @@ document.addEventListener('DOMContentLoaded', () => {
               </button>
             `;
             copyButtons = `
-              <button onclick="copyStreamLink('${stream.id}')" class="p-1.5 rounded bg-slate-900 border border-slate-800 hover:bg-brand-indigo/20 hover:border-brand-indigo/40 text-slate-400 hover:text-brand-indigo transition-all shadow-sm" title="Copy stream link">
+              <button onclick="copyStreamLink('${stream.id}')" class="p-1.5 rounded bg-slate-900 border border-slate-800 hover:bg-brand-indigo/20 hover:border-brand-indigo/40 text-slate-400 hover:text-brand-indigo transition-all shadow-sm" title="Copy stream player link">
                 <i class="bi bi-link-45deg text-sm"></i>
+              </button>
+              <button onclick="copyHlsLink('${stream.id}')" class="p-1.5 rounded bg-slate-900 border border-slate-800 hover:bg-brand-indigo/20 hover:border-brand-indigo/40 text-slate-400 hover:text-brand-indigo transition-all shadow-sm" title="Copy HLS video stream link (.m3u8)">
+                <i class="bi bi-file-earmark-play text-sm"></i>
               </button>
               <button onclick="copyIframeCode('${stream.id}')" class="p-1.5 rounded bg-slate-900 border border-slate-800 hover:bg-brand-indigo/20 hover:border-brand-indigo/40 text-slate-400 hover:text-brand-indigo transition-all shadow-sm" title="Copy iframe embed code">
                 <i class="bi bi-code-slash text-sm"></i>
@@ -599,6 +602,9 @@ document.addEventListener('DOMContentLoaded', () => {
             copyButtons = `
               <button disabled class="p-1.5 rounded bg-slate-800 text-slate-600 border border-slate-700/40 cursor-not-allowed opacity-50">
                 <i class="bi bi-link-45deg text-sm"></i>
+              </button>
+              <button disabled class="p-1.5 rounded bg-slate-800 text-slate-600 border border-slate-700/40 cursor-not-allowed opacity-50">
+                <i class="bi bi-file-earmark-play text-sm"></i>
               </button>
               <button disabled class="p-1.5 rounded bg-slate-800 text-slate-600 border border-slate-700/40 cursor-not-allowed opacity-50">
                 <i class="bi bi-code-slash text-sm"></i>
@@ -1025,6 +1031,32 @@ document.addEventListener('DOMContentLoaded', () => {
           showToast("Stream play link copied!", "bi-link-45deg");
         } catch (err) {
           showToast("Failed to copy play link.", "bi-exclamation-triangle", true);
+        }
+        document.body.removeChild(textarea);
+      });
+  };
+
+  window.copyHlsLink = function (streamId) {
+    const isLocalDev = (window.location.port === '8800' || window.location.port === '8080' || window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost');
+    const gatewayUrl = isLocalDev ? 'b2_gateway.php' : 'b2_gateway';
+    const hlsLink = `${window.location.origin}/${gatewayUrl}/${streamId}/master.m3u8`;
+    
+    navigator.clipboard.writeText(hlsLink)
+      .then(() => {
+        showToast("HLS video stream link copied!", "bi-file-earmark-play");
+      })
+      .catch(() => {
+        // Fallback for secure contexts in older browsers
+        const textarea = document.createElement('textarea');
+        textarea.value = hlsLink;
+        textarea.style.position = 'fixed';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+          document.execCommand('copy');
+          showToast("HLS video stream link copied!", "bi-file-earmark-play");
+        } catch (err) {
+          showToast("Failed to copy HLS link.", "bi-exclamation-triangle", true);
         }
         document.body.removeChild(textarea);
       });

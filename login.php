@@ -15,11 +15,11 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'auth.php';
 
 // Redirect to dashboard index if session is already active
 if (isLoggedIn()) {
-    header('Location: index');
+    header('Location: ' . getBaseUrl() . '/index');
     exit;
 }
 
-$dbFile = __DIR__ . DIRECTORY_SEPARATOR . 'database.sqlite';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'db.php';
 $errorMsg = null;
 $logoutMsg = isset($_GET['logout']) && $_GET['logout'] === '1' ? 'Logged out successfully.' : null;
 
@@ -31,11 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errorMsg = 'All credentials fields are required.';
     } else {
         try {
-            $dsn = "sqlite:" . $dbFile;
-            $pdo = new PDO($dsn, null, null, [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            ]);
+            $pdo = getDatabaseConnection();
 
             $stmt = $pdo->prepare("SELECT * FROM `users` WHERE `username` = :username");
             $stmt->execute([':username' => $username]);
@@ -47,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['user_id'] = $user['id'];
                 $_SESSION['username'] = $user['username'];
 
-                header('Location: index');
+                header('Location: ' . getBaseUrl() . '/index');
                 exit;
             } else {
                 $errorMsg = 'Incorrect username or password.';

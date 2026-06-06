@@ -167,7 +167,7 @@ if (basename($_SERVER['SCRIPT_FILENAME']) === 'api.php') {
     // Protect all API actions and views
     if (!isLoggedIn()) {
         if ($action === 'home') {
-            header('Location: login.php');
+            header('Location: ' . getBaseUrl() . '/login');
             exit;
         } else {
             sendJsonResponse(['error' => 'Unauthorized. Please login first.'], 401);

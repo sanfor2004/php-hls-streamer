@@ -3,23 +3,38 @@
 # =================================================================================
 # Manages clean URLs, hides server file extensions, and preserves query parameters.
 # Supports path-info routes (e.g. /b2_gateway/{id}/{file}).
+#
+# REDIRECT-LOOP HARDENING:
+#   • Rule 1 aborts the entire rewrite chain for already-rewritten requests.
+#     Apache sets REDIRECT_STATUS=200 after an internal rewrite; checking it
+#     non-empty prevents the rule from firing a second time on the same request.
+#   • Rule 2 (301 canonicalization) is guarded to only match .php extensions in
+#     the original browser-sent request (THE_REQUEST), not on internal rewrites.
+#   • Rule 3 (extensionless → PHP) only fires when the file does not already
+#     exist on disk AND when REDIRECT_STATUS is empty (first pass only).
 # =================================================================================
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
     RewriteBase /
 
-    # 1. Prevent loop on rewritten files
-    RewriteCond %{ENV:REDIRECT_STATUS} ^$
+    # ── Rule 1: Halt all further rewriting once Apache has already rewritten ──
+    # REDIRECT_STATUS is set to "200" by Apache after the first internal rewrite.
+    # Without this guard every internal rewrite triggers another full pass, which
+    # can create 302/301 loops when combined with the canonicalization rule below.
+    RewriteCond %{ENV:REDIRECT_STATUS} !^$
+    RewriteRule ^ - [L]
 
-    # 2. Redirect external requests from .php to extensionless (SEO canonicalization)
-    # Handles both standard scripts and scripts with path-info
-    RewriteCond %{THE_REQUEST} ^[A-Z]{3,9}\ /([^.]+)\.php([^?\ ]*)
-    RewriteRule ^([^.]+)\.php(.*)$ /$1$2 [R=301,L]
+    # ── Rule 2: Canonical SEO redirect — strip .php from browser-visible URLs ──
+    # Only matches if the RAW browser request (THE_REQUEST) contains ".php".
+    # Internal rewrites never appear in THE_REQUEST, so this never double-fires.
+    RewriteCond %{THE_REQUEST} ^[A-Z]{3,9}\ /([^.\ ]+)\.php([^?\ ]*)
+    RewriteRule ^([^.]+)\.php(.*)$ /$1$2 [R=301,L,QSA]
 
-    # 3. Internally map extensionless requests to physical PHP files
-    RewriteCond %{REQUEST_FILENAME} !-d
+    # ── Rule 3: Internally route extensionless URLs to their PHP files ──
+    # Only triggers when the URL does not map to a real file or directory.
     RewriteCond %{REQUEST_FILENAME} !-f
-    # Map whitelisted routes to their physical PHP files
+    RewriteCond %{REQUEST_FILENAME} !-d
     RewriteRule ^(index|settings|upload|ads|login|logout|api|stream|b2_gateway)(/.*)?$ $1.php$2 [L,QSA]
+
 </IfModule>
