@@ -204,6 +204,9 @@ function initializeDatabaseSchema(PDO $pdo): void
             'b2_application_key' => '',
             'b2_bucket_id'       => '',
             'b2_bucket_name'     => '',
+            'ffmpeg_threads'     => '0',
+            'ffmpeg_preset'      => 'veryfast',
+            'parallel_transcode' => '0',
             'renditions'         => json_encode([
                 '1080p' => ['width' => 1920, 'height' => 1080, 'crf' => 25, 'vbitrate' => '4096k', 'abitrate' => '192k'],
                 '720p'  => ['width' => 1280, 'height' => 720,  'crf' => 26, 'vbitrate' => '2048k', 'abitrate' => '128k'],

@@ -137,6 +137,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!formData.has('add_top_quality')) {
       formData.set('add_top_quality', '0');
     }
+
+    if (!formData.has('parallel_transcode')) {
+      formData.set('parallel_transcode', '0');
+    }
     
     fetch('api?action=save_settings', {
       method: 'POST',

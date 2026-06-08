@@ -105,6 +105,9 @@ function initializeDatabaseSchemaLegacy(PDO $pdo): void
                 'audio_codec'     => 'aac',
                 'audio_bitrate'   => '128k',
                 'audio_channels'  => 'stereo',
+                'ffmpeg_threads'  => '0',
+                'ffmpeg_preset'   => 'veryfast',
+                'parallel_transcode' => '0',
                 'renditions'      => json_encode([
                     '1080p' => ['width' => 1920, 'height' => 1080, 'crf' => 25, 'vbitrate' => '4096k', 'abitrate' => '192k'],
                     '720p'  => ['width' => 1280, 'height' => 720,  'crf' => 26, 'vbitrate' => '2048k', 'abitrate' => '128k'],
@@ -537,7 +540,8 @@ function handleSaveSettings(?PDO $pdo): void
         $keys = [
             'video_codec', 'keyframe', 'bitrate_ratio', 'buffer_ratio',
             'hls_time', 'add_top_quality', 'audio_codec', 'audio_bitrate', 'audio_channels',
-            'b2_key_id', 'b2_application_key', 'b2_bucket_id', 'b2_bucket_name'
+            'b2_key_id', 'b2_application_key', 'b2_bucket_id', 'b2_bucket_name',
+            'ffmpeg_threads', 'ffmpeg_preset', 'parallel_transcode'
         ];
 
         $pdo->beginTransaction();

@@ -52,16 +52,58 @@ declare(strict_types=1);
           Formula: Maxrate = Bitrate &times; Bitrate ratio | Bufsize = Bitrate &times; Buffer ratio
         </div>
 
-        <!-- Add Top Quality Switch Toggle -->
-        <div class="flex items-center justify-between p-4 rounded-xl bg-slate-900 bg-opacity-40 border border-slate-800">
-          <div>
-            <h4 class="font-display font-semibold text-sm text-white">Add top quality</h4>
-            <p class="text-xs text-slate-500 mt-1">If enabled, source quality is added to rendition ladders if it exceeds target profile specs.</p>
+        <div class="grid grid-cols-2 gap-6">
+          <div class="flex flex-col gap-2">
+            <label class="text-xs text-slate-400 font-bold uppercase tracking-wider">FFmpeg Preset</label>
+            <select name="ffmpeg_preset" class="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-brand-orange transition-colors">
+              <option value="ultrafast" <?php echo ($settings['ffmpeg_preset'] ?? 'veryfast') === 'ultrafast' ? 'selected' : ''; ?>>ultrafast (Fastest transcode, larger files)</option>
+              <option value="superfast" <?php echo ($settings['ffmpeg_preset'] ?? 'veryfast') === 'superfast' ? 'selected' : ''; ?>>superfast</option>
+              <option value="veryfast" <?php echo ($settings['ffmpeg_preset'] ?? 'veryfast') === 'veryfast' ? 'selected' : ''; ?>>veryfast (Recommended default)</option>
+              <option value="faster" <?php echo ($settings['ffmpeg_preset'] ?? 'veryfast') === 'faster' ? 'selected' : ''; ?>>faster</option>
+              <option value="fast" <?php echo ($settings['ffmpeg_preset'] ?? 'veryfast') === 'fast' ? 'selected' : ''; ?>>fast</option>
+              <option value="medium" <?php echo ($settings['ffmpeg_preset'] ?? 'veryfast') === 'medium' ? 'selected' : ''; ?>>medium (Standard balancing)</option>
+              <option value="slow" <?php echo ($settings['ffmpeg_preset'] ?? 'veryfast') === 'slow' ? 'selected' : ''; ?>>slow (Best quality/compression)</option>
+            </select>
           </div>
-          <label class="relative inline-flex items-center cursor-pointer">
-            <input type="checkbox" name="add_top_quality" value="1" <?php echo $settings['add_top_quality'] === '1' ? 'checked' : ''; ?> class="sr-only peer">
-            <div class="w-11 h-6 bg-slate-800 rounded-full peer peer-focus:ring-2 peer-focus:ring-brand-orange peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-orange"></div>
-          </label>
+
+          <div class="flex flex-col gap-2">
+            <label class="text-xs text-slate-400 font-bold uppercase tracking-wider">FFmpeg Threads</label>
+            <select name="ffmpeg_threads" class="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-brand-orange transition-colors">
+              <option value="0" <?php echo ($settings['ffmpeg_threads'] ?? '0') === '0' ? 'selected' : ''; ?>>0 (Auto - Use all CPU cores)</option>
+              <option value="1" <?php echo ($settings['ffmpeg_threads'] ?? '0') === '1' ? 'selected' : ''; ?>>1 (Single-threaded)</option>
+              <option value="2" <?php echo ($settings['ffmpeg_threads'] ?? '0') === '2' ? 'selected' : ''; ?>>2 Threads</option>
+              <option value="4" <?php echo ($settings['ffmpeg_threads'] ?? '0') === '4' ? 'selected' : ''; ?>>4 Threads</option>
+              <option value="8" <?php echo ($settings['ffmpeg_threads'] ?? '0') === '8' ? 'selected' : ''; ?>>8 Threads</option>
+              <option value="12" <?php echo ($settings['ffmpeg_threads'] ?? '0') === '12' ? 'selected' : ''; ?>>12 Threads</option>
+              <option value="16" <?php echo ($settings['ffmpeg_threads'] ?? '0') === '16' ? 'selected' : ''; ?>>16 Threads</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- Add Top Quality Switch Toggle -->
+          <div class="flex items-center justify-between p-4 rounded-xl bg-slate-900 bg-opacity-40 border border-slate-800">
+            <div>
+              <h4 class="font-display font-semibold text-sm text-white">Add top quality</h4>
+              <p class="text-xs text-slate-500 mt-1">Add source quality to ladder if it exceeds specs.</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" name="add_top_quality" value="1" <?php echo $settings['add_top_quality'] === '1' ? 'checked' : ''; ?> class="sr-only peer">
+              <div class="w-11 h-6 bg-slate-800 rounded-full peer peer-focus:ring-2 peer-focus:ring-brand-orange peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-orange"></div>
+            </label>
+          </div>
+
+          <!-- Parallel Transcoding Toggle -->
+          <div class="flex items-center justify-between p-4 rounded-xl bg-slate-900 bg-opacity-40 border border-slate-800">
+            <div>
+              <h4 class="font-display font-semibold text-sm text-white">Parallel Transcoding</h4>
+              <p class="text-xs text-slate-500 mt-1">Transcode selected resolutions concurrently.</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" name="parallel_transcode" value="1" <?php echo ($settings['parallel_transcode'] ?? '0') === '1' ? 'checked' : ''; ?> class="sr-only peer">
+              <div class="w-11 h-6 bg-slate-800 rounded-full peer peer-focus:ring-2 peer-focus:ring-brand-orange peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-orange"></div>
+            </label>
+          </div>
         </div>
       </div>
 

@@ -85,6 +85,9 @@ $b2KeyIdSetting          = '';
 $b2ApplicationKeySetting = '';
 $b2BucketIdSetting       = '';
 $b2BucketNameSetting     = '';
+$ffmpegThreadsSetting    = '0';
+$ffmpegPresetSetting     = 'veryfast';
+$parallelTranscodeSetting = '0';
 $renditionLadder = [
     '1080p' => ['width' => 1920, 'height' => 1080, 'crf' => 25, 'vbitrate' => '4096k', 'abitrate' => '192k'],
     '720p'  => ['width' => 1280, 'height' => 720,  'crf' => 26, 'vbitrate' => '2048k', 'abitrate' => '128k'],
@@ -134,6 +137,15 @@ try {
             case 'b2_bucket_name':
                 $b2BucketNameSetting = $row['value'];
                 break;
+            case 'ffmpeg_threads':
+                $ffmpegThreadsSetting = $row['value'];
+                break;
+            case 'ffmpeg_preset':
+                $ffmpegPresetSetting = $row['value'];
+                break;
+            case 'parallel_transcode':
+                $parallelTranscodeSetting = $row['value'];
+                break;
             case 'renditions':
                 $decoded = json_decode($row['value'], true);
                 if (is_array($decoded)) {
@@ -155,6 +167,7 @@ $streamOutputDir = $outputDir . DIRECTORY_SEPARATOR . $streamId;
 if (!is_dir($streamOutputDir)) {
     mkdir($streamOutputDir, 0775, true);
 }
+$masterPlaylistPath = $streamOutputDir . DIRECTORY_SEPARATOR . 'master.m3u8';
 
 // Create worker transcode log file to capture background stderr
 $logFilePath = $streamOutputDir . DIRECTORY_SEPARATOR . 'transcode_worker.log';
@@ -420,6 +433,9 @@ if (count($audioStreams) > 1) {
         mkdir($audioOutputDir, 0775, true);
     }
     
+    $ac = ($audioChannelsSetting === 'mono') ? 1 : 2;
+    $targetAudioBitrate = !empty($audioBitrateSetting) ? $audioBitrateSetting : '128k';
+    
     foreach ($audioStreams as $aIndex => $audioMeta) {
         $trackDir = $audioOutputDir . DIRECTORY_SEPARATOR . $audioMeta['id'];
         if (!is_dir($trackDir)) {
@@ -432,10 +448,10 @@ if (count($audioStreams) > 1) {
         
         file_put_contents($logFilePath, "--- Transcoding Audio Track {$audioMeta['id']} ({$audioMeta['title']}) ---\n", FILE_APPEND);
         
-        // Transcode specific audio track to audio-only HLS
+        // Transcode specific audio track to audio-only HLS using correct parameters
         $ffmpegAudioCmd = "ffmpeg -y -i " . escapeshellarg($sourceFilePath)
-            . " -map 0:a:" . $aIndex . " -c:a aac -b:a 128k"
-            . " -hls_time 6 -hls_playlist_type vod"
+            . " -map 0:a:" . $aIndex . " -c:a " . $audioCodecSetting . " -b:a " . $targetAudioBitrate . " -ac " . $ac
+            . " -hls_time " . $hlsTimeSetting . " -hls_playlist_type vod"
             . " -hls_segment_filename \"" . $audioSegmentPattern . "\""
             . " \"" . $audioPlaylistPath . "\" 2>&1";
             
@@ -477,196 +493,335 @@ if (count($audioStreams) > 1) {
 }
 
 // ---------------------------------------------------------------------------------
-// STEP 2: LOOP AND TRANSCODE EACH TARGET RESOLUTION SEQUENTIALLY
+// STEP 2: LOOP AND TRANSCODE TARGET RESOLUTIONS
 // ---------------------------------------------------------------------------------
 $successfulRenditionsCount = 0;
 $masterPlaylistEntries = [];
 
-foreach ($resolutionsSelected as $resKey) {
-    if (!isset($renditionLadder[$resKey])) {
-        continue;
+if ($parallelTranscodeSetting === '1') {
+    file_put_contents($logFilePath, "Launching parallel HLS transcode engine...\n", FILE_APPEND);
+    $runningProcesses = [];
+
+    foreach ($resolutionsSelected as $resKey) {
+        if (!isset($renditionLadder[$resKey])) {
+            continue;
+        }
+
+        $config = $renditionLadder[$resKey];
+        $width = $config['width'];
+        $height = $config['height'];
+        $crf = $config['crf'];
+        $vbitrate = $config['vbitrate'];
+        $abitrate = $config['abitrate'];
+
+        // Write initial resolution track placeholder record to database
+        $stmtRes = $pdo->prepare("INSERT INTO `stream_resolutions` (`stream_id`, `resolution`, `width`, `height`, `status`) 
+                                  VALUES (:stream_id, :resolution, :width, :height, 'pending')");
+        $stmtRes->execute([
+            ':stream_id' => $streamId,
+            ':resolution' => $resKey,
+            ':width' => $width,
+            ':height' => $height
+        ]);
+        $resolutionRecordId = (int)$pdo->lastInsertId();
+
+        // Create sub-directory for this specific resolution representation
+        $resOutputDir = $streamOutputDir . DIRECTORY_SEPARATOR . $resKey;
+        if (!is_dir($resOutputDir)) {
+            mkdir($resOutputDir, 0775, true);
+        }
+
+        $playlistFilename = 'playlist.m3u8';
+        $playlistPath = $resOutputDir . DIRECTORY_SEPARATOR . $playlistFilename;
+        $segmentPattern = $resOutputDir . DIRECTORY_SEPARATOR . 'seg_%03d.ts';
+
+        $bitrateNum = (int)preg_replace('/[^0-9]/', '', $vbitrate);
+        $bufsize = (int)($bitrateNum * $bufferRatioSetting) . 'k';
+        $maxrate = (int)($bitrateNum * $bitrateRatioSetting) . 'k';
+
+        $c_v = 'libx264';
+        if ($videoCodecSetting === 'hevc' || $videoCodecSetting === 'h265') {
+            $c_v = 'libx265';
+        } elseif ($videoCodecSetting !== 'h264' && !empty($videoCodecSetting)) {
+            $c_v = $videoCodecSetting;
+        }
+
+        $ac = ($audioChannelsSetting === 'mono') ? 1 : 2;
+        $targetAudioBitrate = !empty($audioBitrateSetting) ? $audioBitrateSetting : $abitrate;
+
+        $audioMapping = ' -map 0:a:0?';
+        $audioOpts = ' -c:a ' . $audioCodecSetting . ' -b:a ' . $targetAudioBitrate . ' -ac ' . $ac;
+        if (count($audioStreams) > 1) {
+            $audioMapping = '';
+            $audioOpts = '';
+        }
+
+        // Build command with customized preset and threads
+        $ffmpegCmd = 'ffmpeg -y -i ' . escapeshellarg($sourceFilePath)
+            . ' -map 0:v:0' . $audioMapping
+            . ' -c:v ' . $c_v . ' -preset ' . $ffmpegPresetSetting
+            . ' -crf ' . $crf
+            . ' -b:v ' . $vbitrate
+            . ' -maxrate ' . $maxrate
+            . ' -bufsize ' . $bufsize
+            . ' -threads ' . $ffmpegThreadsSetting
+            . ' -g ' . $keyframeSetting . ' -keyint_min ' . $keyframeSetting . ' -sc_threshold 0'
+            . ' -vf "scale=w=' . $width . ':h=' . $height . ':force_original_aspect_ratio=decrease,pad=' . $width . ':' . $height . ':(ow-iw)/2:(oh-ih)/2,format=yuv420p"'
+            . $audioOpts
+            . ' -hls_time ' . $hlsTimeSetting . ' -hls_playlist_type vod'
+            . ' -hls_segment_filename "' . $segmentPattern . '"'
+            . ' "' . $playlistPath . '"';
+
+        $resLogFilePath = $resOutputDir . DIRECTORY_SEPARATOR . 'transcode.log';
+        file_put_contents($resLogFilePath, "--- Starting parallel transcode for {$resKey} rendition ---\nExecuting Command: {$ffmpegCmd}\n\n");
+
+        $descriptors = [
+            0 => ["pipe", "r"],
+            1 => ["file", $resLogFilePath, "w"],
+            2 => ["file", $resLogFilePath, "w"]
+        ];
+
+        $process = proc_open($ffmpegCmd, $descriptors, $pipes);
+        if (is_resource($process)) {
+            $bandwidth = $bitrateNum * 1000;
+            $relativePlaylistPath = 'Output/' . $streamId . '/' . $resKey . '/' . $playlistFilename;
+
+            $runningProcesses[$resKey] = [
+                'process' => $process,
+                'pipes' => $pipes,
+                'db_id' => $resolutionRecordId,
+                'playlist_path' => $playlistPath,
+                'relative_playlist_path' => $relativePlaylistPath,
+                'res_output_dir' => $resOutputDir,
+                'playlist_filename' => $playlistFilename,
+                'bandwidth' => $bandwidth,
+                'width' => $width,
+                'height' => $height,
+                'res_key' => $resKey,
+                'log_file' => $resLogFilePath
+            ];
+
+            $stmtUpdStatus = $pdo->prepare("UPDATE `stream_resolutions` SET `status` = 'processing' WHERE `id` = :id");
+            $stmtUpdStatus->execute([':id' => $resolutionRecordId]);
+        } else {
+            $stmtUpdStatus = $pdo->prepare("UPDATE `stream_resolutions` SET `status` = 'failed' WHERE `id` = :id");
+            $stmtUpdStatus->execute([':id' => $resolutionRecordId]);
+            file_put_contents($logFilePath, "Failed to spawn parallel FFmpeg process for resolution {$resKey}\n", FILE_APPEND);
+        }
     }
 
-    $config = $renditionLadder[$resKey];
-    $width = $config['width'];
-    $height = $config['height'];
-    $crf = $config['crf'];
-    $vbitrate = $config['vbitrate'];
-    $abitrate = $config['abitrate'];
+    // Monitoring loop for parallel processes
+    while (count($runningProcesses) > 0) {
+        foreach ($runningProcesses as $resKey => $info) {
+            $status = proc_get_status($info['process']);
+            if (!$status['running']) {
+                fclose($info['pipes'][0]);
+                $exitCode = $status['exitcode'];
+                proc_close($info['process']);
 
-    // Write initial resolution track placeholder record to database
-    $stmtRes = $pdo->prepare("INSERT INTO `stream_resolutions` (`stream_id`, `resolution`, `width`, `height`, `status`) 
-                              VALUES (:stream_id, :resolution, :width, :height, 'processing')");
-    $stmtRes->execute([
-        ':stream_id' => $streamId,
-        ':resolution' => $resKey,
-        ':width' => $width,
-        ':height' => $height
-    ]);
-    $resolutionRecordId = (int)$pdo->lastInsertId();
+                file_put_contents($info['log_file'], "\nFFmpeg Exit Code: {$exitCode}\n", FILE_APPEND);
 
-    // Create sub-directory for this specific resolution representation
-    $resOutputDir = $streamOutputDir . DIRECTORY_SEPARATOR . $resKey;
-    if (!is_dir($resOutputDir)) {
-        mkdir($resOutputDir, 0775, true);
+                if ($exitCode === 0 && is_file($info['playlist_path'])) {
+                    file_put_contents($logFilePath, "Rendition {$resKey} transcoded successfully.\n", FILE_APPEND);
+                    
+                    $relativePlaylistPath = $info['relative_playlist_path'];
+                    if ($b2Client) {
+                        $resFiles = glob($info['res_output_dir'] . DIRECTORY_SEPARATOR . '*');
+                        if (is_array($resFiles)) {
+                            usort($resFiles, function ($a, $b) {
+                                $isPlaylistA = (pathinfo($a, PATHINFO_EXTENSION) === 'm3u8');
+                                $isPlaylistB = (pathinfo($b, PATHINFO_EXTENSION) === 'm3u8');
+                                return $isPlaylistA <=> $isPlaylistB;
+                            });
+                            foreach ($resFiles as $resFile) {
+                                if (is_file($resFile) && basename($resFile) !== 'transcode.log') {
+                                    $remoteResPath = "Output/{$streamId}/{$resKey}/" . basename($resFile);
+                                    $uploadedUrl = uploadToB2AndCleanup($resFile, $remoteResPath, $b2Client, $logFilePath);
+                                    if (basename($resFile) === $info['playlist_filename'] && $uploadedUrl) {
+                                        $relativePlaylistPath = $uploadedUrl;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    $stmtUpdRes = $pdo->prepare("UPDATE `stream_resolutions` SET `status` = 'completed', `playlist_path` = :path WHERE `id` = :id");
+                    $stmtUpdRes->execute([
+                        ':path' => $relativePlaylistPath,
+                        ':id' => $info['db_id']
+                    ]);
+
+                    $successfulRenditionsCount++;
+
+                    $masterPlaylistEntries[] = [
+                        'bandwidth' => $info['bandwidth'],
+                        'resolution' => "{$info['width']}x{$info['height']}",
+                        'playlist' => "{$resKey}/{$info['playlist_filename']}"
+                    ];
+
+                    buildMasterPlaylist(
+                        $streamOutputDir,
+                        $masterPlaylistEntries,
+                        $audioPlaylists,
+                        $subtitlePlaylists,
+                        $pdo,
+                        $streamId,
+                        $b2Client,
+                        $logFilePath
+                    );
+                } else {
+                    file_put_contents($logFilePath, "Rendition {$resKey} transcoding failed with exit status {$exitCode}.\n", FILE_APPEND);
+                    $stmtUpdRes = $pdo->prepare("UPDATE `stream_resolutions` SET `status` = 'failed' WHERE `id` = :id");
+                    $stmtUpdRes->execute([':id' => $info['db_id']]);
+                }
+
+                if (is_file($info['log_file']) && $b2Client && $exitCode === 0) {
+                    @unlink($info['log_file']);
+                }
+
+                unset($runningProcesses[$resKey]);
+            }
+        }
+        usleep(200000);
     }
 
-    $playlistFilename = 'playlist.m3u8';
-    $playlistPath = $resOutputDir . DIRECTORY_SEPARATOR . $playlistFilename;
-    $segmentPattern = $resOutputDir . DIRECTORY_SEPARATOR . 'seg_%03d.ts';
+} else {
+    // Sequential transcode path
+    file_put_contents($logFilePath, "Launching sequential HLS transcode engine...\n", FILE_APPEND);
+    foreach ($resolutionsSelected as $resKey) {
+        if (!isset($renditionLadder[$resKey])) {
+            continue;
+        }
 
-    // Parse numeric value of target video bitrate for HLS buffer size calculation
-    $bitrateNum = (int)preg_replace('/[^0-9]/', '', $vbitrate);
-    $bufsize = (int)($bitrateNum * $bufferRatioSetting) . 'k';
-    $maxrate = (int)($bitrateNum * $bitrateRatioSetting) . 'k';
+        $config = $renditionLadder[$resKey];
+        $width = $config['width'];
+        $height = $config['height'];
+        $crf = $config['crf'];
+        $vbitrate = $config['vbitrate'];
+        $abitrate = $config['abitrate'];
 
-    file_put_contents($logFilePath, "--- Starting transcode for {$resKey} rendition ---\n", FILE_APPEND);
+        // Write initial resolution track placeholder record to database
+        $stmtRes = $pdo->prepare("INSERT INTO `stream_resolutions` (`stream_id`, `resolution`, `width`, `height`, `status`) 
+                                  VALUES (:stream_id, :resolution, :width, :height, 'processing')");
+        $stmtRes->execute([
+            ':stream_id' => $streamId,
+            ':resolution' => $resKey,
+            ':width' => $width,
+            ':height' => $height
+        ]);
+        $resolutionRecordId = (int)$pdo->lastInsertId();
 
-    // Map video codec to FFmpeg library names
-    $c_v = 'libx264';
-    if ($videoCodecSetting === 'hevc' || $videoCodecSetting === 'h265') {
-        $c_v = 'libx265';
-    } elseif ($videoCodecSetting !== 'h264' && !empty($videoCodecSetting)) {
-        $c_v = $videoCodecSetting;
-    }
+        // Create sub-directory for this specific resolution representation
+        $resOutputDir = $streamOutputDir . DIRECTORY_SEPARATOR . $resKey;
+        if (!is_dir($resOutputDir)) {
+            mkdir($resOutputDir, 0775, true);
+        }
 
-    // Determine audio channels and bitrate
-    $ac = ($audioChannelsSetting === 'mono') ? 1 : 2;
-    $targetAudioBitrate = !empty($audioBitrateSetting) ? $audioBitrateSetting : $abitrate;
+        $playlistFilename = 'playlist.m3u8';
+        $playlistPath = $resOutputDir . DIRECTORY_SEPARATOR . $playlistFilename;
+        $segmentPattern = $resOutputDir . DIRECTORY_SEPARATOR . 'seg_%03d.ts';
 
-    // Build the robust FFmpeg command for HLS segment compilation
-    // Configures standard scaling, VOD HLS playlists, dynamic codecs and keyframes.
-    $ffmpegCmd = 'ffmpeg -y -i ' . escapeshellarg($sourceFilePath)
-        . ' -map 0:v:0 -map 0:a:0?' // Map video and primary audio track
-        . ' -c:v ' . $c_v . ' -preset veryfast'
-        . ' -crf ' . $crf
-        . ' -b:v ' . $vbitrate
-        . ' -maxrate ' . $maxrate
-        . ' -bufsize ' . $bufsize
-        . ' -g ' . $keyframeSetting . ' -keyint_min ' . $keyframeSetting . ' -sc_threshold 0'
-        . ' -vf "scale=w=' . $width . ':h=' . $height . ':force_original_aspect_ratio=decrease,pad=' . $width . ':' . $height . ':(ow-iw)/2:(oh-ih)/2,format=yuv420p"'
-        . ' -c:a ' . $audioCodecSetting . ' -b:a ' . $targetAudioBitrate . ' -ac ' . $ac
-        . ' -hls_time ' . $hlsTimeSetting . ' -hls_playlist_type vod'
-        . ' -hls_segment_filename "' . $segmentPattern . '"'
-        . ' "' . $playlistPath . '"'
-        . ' 2>&1';
+        $bitrateNum = (int)preg_replace('/[^0-9]/', '', $vbitrate);
+        $bufsize = (int)($bitrateNum * $bufferRatioSetting) . 'k';
+        $maxrate = (int)($bitrateNum * $bitrateRatioSetting) . 'k';
 
-    file_put_contents($logFilePath, "Executing Command: {$ffmpegCmd}\n", FILE_APPEND);
+        file_put_contents($logFilePath, "--- Starting sequential transcode for {$resKey} rendition ---\n", FILE_APPEND);
 
-    // Run the conversion sequence
-    exec($ffmpegCmd, $ffmpegOut, $ffmpegCode);
+        $c_v = 'libx264';
+        if ($videoCodecSetting === 'hevc' || $videoCodecSetting === 'h265') {
+            $c_v = 'libx265';
+        } elseif ($videoCodecSetting !== 'h264' && !empty($videoCodecSetting)) {
+            $c_v = $videoCodecSetting;
+        }
 
-    // Log the output results for server debugging audit trails
-    file_put_contents($logFilePath, implode("\n", $ffmpegOut) . "\n", FILE_APPEND);
-    file_put_contents($logFilePath, "FFmpeg Exit Code: {$ffmpegCode}\n\n", FILE_APPEND);
+        $ac = ($audioChannelsSetting === 'mono') ? 1 : 2;
+        $targetAudioBitrate = !empty($audioBitrateSetting) ? $audioBitrateSetting : $abitrate;
 
-    unset($ffmpegOut);
+        $audioMapping = ' -map 0:a:0?';
+        $audioOpts = ' -c:a ' . $audioCodecSetting . ' -b:a ' . $targetAudioBitrate . ' -ac ' . $ac;
+        if (count($audioStreams) > 1) {
+            $audioMapping = '';
+            $audioOpts = '';
+        }
 
-    if ($ffmpegCode === 0 && is_file($playlistPath)) {
-        // Mark this track complete in the database
-        $stmtUpdRes = $pdo->prepare("UPDATE `stream_resolutions` SET `status` = 'completed', `playlist_path` = :path WHERE `id` = :id");
-        // Relative path directory notation or B2 public URL
-        $relativePlaylistPath = 'Output/' . $streamId . '/' . $resKey . '/' . $playlistFilename;
+        $ffmpegCmd = 'ffmpeg -y -i ' . escapeshellarg($sourceFilePath)
+            . ' -map 0:v:0' . $audioMapping
+            . ' -c:v ' . $c_v . ' -preset ' . $ffmpegPresetSetting
+            . ' -crf ' . $crf
+            . ' -b:v ' . $vbitrate
+            . ' -maxrate ' . $maxrate
+            . ' -bufsize ' . $bufsize
+            . ' -threads ' . $ffmpegThreadsSetting
+            . ' -g ' . $keyframeSetting . ' -keyint_min ' . $keyframeSetting . ' -sc_threshold 0'
+            . ' -vf "scale=w=' . $width . ':h=' . $height . ':force_original_aspect_ratio=decrease,pad=' . $width . ':' . $height . ':(ow-iw)/2:(oh-ih)/2,format=yuv420p"'
+            . $audioOpts
+            . ' -hls_time ' . $hlsTimeSetting . ' -hls_playlist_type vod'
+            . ' -hls_segment_filename "' . $segmentPattern . '"'
+            . ' "' . $playlistPath . '"'
+            . ' 2>&1';
 
-        if ($b2Client) {
-            $resFiles = glob($resOutputDir . DIRECTORY_SEPARATOR . '*');
-            if (is_array($resFiles)) {
-                // Upload segments first, playlist last
-                usort($resFiles, function ($a, $b) {
-                    $isPlaylistA = (pathinfo($a, PATHINFO_EXTENSION) === 'm3u8');
-                    $isPlaylistB = (pathinfo($b, PATHINFO_EXTENSION) === 'm3u8');
-                    return $isPlaylistA <=> $isPlaylistB;
-                });
-                foreach ($resFiles as $resFile) {
-                    if (is_file($resFile)) {
-                        $remoteResPath = "Output/{$streamId}/{$resKey}/" . basename($resFile);
-                        $uploadedUrl = uploadToB2AndCleanup($resFile, $remoteResPath, $b2Client, $logFilePath);
-                        if (basename($resFile) === $playlistFilename && $uploadedUrl) {
-                            $relativePlaylistPath = $uploadedUrl;
+        file_put_contents($logFilePath, "Executing Command: {$ffmpegCmd}\n", FILE_APPEND);
+
+        exec($ffmpegCmd, $ffmpegOut, $ffmpegCode);
+
+        file_put_contents($logFilePath, implode("\n", $ffmpegOut) . "\n", FILE_APPEND);
+        file_put_contents($logFilePath, "FFmpeg Exit Code: {$ffmpegCode}\n\n", FILE_APPEND);
+
+        unset($ffmpegOut);
+
+        if ($ffmpegCode === 0 && is_file($playlistPath)) {
+            $relativePlaylistPath = 'Output/' . $streamId . '/' . $resKey . '/' . $playlistFilename;
+
+            if ($b2Client) {
+                $resFiles = glob($resOutputDir . DIRECTORY_SEPARATOR . '*');
+                if (is_array($resFiles)) {
+                    usort($resFiles, function ($a, $b) {
+                        $isPlaylistA = (pathinfo($a, PATHINFO_EXTENSION) === 'm3u8');
+                        $isPlaylistB = (pathinfo($b, PATHINFO_EXTENSION) === 'm3u8');
+                        return $isPlaylistA <=> $isPlaylistB;
+                    });
+                    foreach ($resFiles as $resFile) {
+                        if (is_file($resFile)) {
+                            $remoteResPath = "Output/{$streamId}/{$resKey}/" . basename($resFile);
+                            $uploadedUrl = uploadToB2AndCleanup($resFile, $remoteResPath, $b2Client, $logFilePath);
+                            if (basename($resFile) === $playlistFilename && $uploadedUrl) {
+                                $relativePlaylistPath = $uploadedUrl;
+                            }
                         }
                     }
                 }
             }
+
+            $stmtUpdRes = $pdo->prepare("UPDATE `stream_resolutions` SET `status` = 'completed', `playlist_path` = :path WHERE `id` = :id");
+            $stmtUpdRes->execute([
+                ':path' => $relativePlaylistPath,
+                ':id' => $resolutionRecordId
+            ]);
+
+            $successfulRenditionsCount++;
+
+            $bandwidth = $bitrateNum * 1000;
+            $masterPlaylistEntries[] = [
+                'bandwidth' => $bandwidth,
+                'resolution' => "{$width}x{$height}",
+                'playlist' => "{$resKey}/{$playlistFilename}"
+            ];
+
+            buildMasterPlaylist(
+                $streamOutputDir,
+                $masterPlaylistEntries,
+                $audioPlaylists,
+                $subtitlePlaylists,
+                $pdo,
+                $streamId,
+                $b2Client,
+                $logFilePath
+            );
+
+        } else {
+            $stmtUpdRes = $pdo->prepare("UPDATE `stream_resolutions` SET `status` = 'failed' WHERE `id` = :id");
+            $stmtUpdRes->execute([':id' => $resolutionRecordId]);
         }
-
-        $stmtUpdRes->execute([
-            ':path' => $relativePlaylistPath,
-            ':id' => $resolutionRecordId
-        ]);
-
-        $successfulRenditionsCount++;
-
-        // Add this track into master playlist configuration registry
-        // Map average bitrates to represent stream specs correctly in player manifests
-        $bandwidth = $bitrateNum * 1000;
-        $masterPlaylistEntries[] = [
-            'bandwidth' => $bandwidth,
-            'resolution' => "{$width}x{$height}",
-            'playlist' => "{$resKey}/{$playlistFilename}"
-        ];
-
-        // --- Build/Update the master playlist file ---
-        $masterPlaylistPath = $streamOutputDir . DIRECTORY_SEPARATOR . 'master.m3u8';
-        
-        // Sort rendition streams by bandwidth to support adaptive quality descending ladders
-        $tempEntries = $masterPlaylistEntries;
-        usort($tempEntries, function ($a, $b) {
-            return $b['bandwidth'] <=> $a['bandwidth'];
-        });
-
-        // Write primary HLS headers and playlist references
-        $m3u8Content = "#EXTM3U\n#EXT-X-VERSION:3\n";
-        
-        // Add audio tracks to master playlist
-        $audioGroup = "";
-        if (!empty($audioPlaylists)) {
-            foreach ($audioPlaylists as $aud) {
-                $m3u8Content .= "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"{$aud['group']}\",NAME=\"{$aud['name']}\",DEFAULT={$aud['default']},AUTOSELECT=YES,LANGUAGE=\"{$aud['lang']}\",URI=\"{$aud['uri']}\"\n";
-            }
-            $audioGroup = ",AUDIO=\"audio_group\"";
-        }
-
-        // Add subtitle tracks to master playlist
-        $subGroup = "";
-        if (!empty($subtitlePlaylists)) {
-            foreach ($subtitlePlaylists as $sub) {
-                $m3u8Content .= "#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"{$sub['group']}\",NAME=\"{$sub['name']}\",DEFAULT={$sub['default']},AUTOSELECT={$sub['default']},LANGUAGE=\"{$sub['lang']}\",URI=\"{$sub['uri']}\"\n";
-            }
-            $subGroup = ",SUBTITLES=\"subs\"";
-        }
-
-        foreach ($tempEntries as $entry) {
-            $m3u8Content .= "#EXT-X-STREAM-INF:BANDWIDTH={$entry['bandwidth']},RESOLUTION={$entry['resolution']}{$audioGroup}{$subGroup}\n";
-            $m3u8Content .= "{$entry['playlist']}\n";
-        }
-
-        file_put_contents($masterPlaylistPath, $m3u8Content);
-
-        // Upload master.m3u8 if B2 is enabled (overwrite it)
-        $hlsPlaylistUrl = 'Output/' . $streamId . '/master.m3u8';
-        if ($b2Client) {
-            try {
-                file_put_contents($logFilePath, "Uploading master.m3u8 to B2...\n", FILE_APPEND);
-                $publicMasterUrl = $b2Client->uploadFile($masterPlaylistPath, "Output/{$streamId}/master.m3u8");
-                $hlsPlaylistUrl = $publicMasterUrl;
-            } catch (Exception $e) {
-                file_put_contents($logFilePath, "Failed to upload master playlist to B2: " . $e->getMessage() . "\n", FILE_APPEND);
-            }
-        }
-
-        // Save/Update master playlist path into database and transition status to 'ready'
-        $updStatus = $pdo->prepare("UPDATE `streams` SET `status` = 'ready', `hls_playlist_url` = :url WHERE `id` = :id");
-        $updStatus->execute([
-            ':url' => $hlsPlaylistUrl,
-            ':id' => $streamId
-        ]);
-        
-        file_put_contents($logFilePath, "Manifest updated for {$resKey}. Stream status: READY. Playlist URL: {$hlsPlaylistUrl}\n", FILE_APPEND);
-
-    } else {
-        // Update database table tracking to signal transcode failure on this resolution
-        $stmtUpdRes = $pdo->prepare("UPDATE `stream_resolutions` SET `status` = 'failed' WHERE `id` = :id");
-        $stmtUpdRes->execute([':id' => $resolutionRecordId]);
     }
 }
 
@@ -720,4 +875,75 @@ if ($b2Client && $successfulRenditionsCount > 0 && !$hasB2Errors) {
     
     // Remove empty stream Output folder recursively
     recursiveRemoveDirectory($streamOutputDir);
+}
+
+/**
+ * Compiles and updates the master.m3u8 playlist file, uploads it to B2 if active,
+ * and updates the stream status in the database to 'ready'.
+ */
+function buildMasterPlaylist(
+    string $streamOutputDir,
+    array $masterPlaylistEntries,
+    array $audioPlaylists,
+    array $subtitlePlaylists,
+    PDO $pdo,
+    string $streamId,
+    ?B2Client $b2Client,
+    string $logFilePath
+): void {
+    $masterPlaylistPath = $streamOutputDir . DIRECTORY_SEPARATOR . 'master.m3u8';
+    
+    // Sort rendition streams by bandwidth to support adaptive quality descending ladders
+    usort($masterPlaylistEntries, function ($a, $b) {
+        return $b['bandwidth'] <=> $a['bandwidth'];
+    });
+
+    // Write primary HLS headers and playlist references
+    $m3u8Content = "#EXTM3U\n#EXT-X-VERSION:3\n";
+    
+    // Add audio tracks to master playlist
+    $audioGroup = "";
+    if (!empty($audioPlaylists)) {
+        foreach ($audioPlaylists as $aud) {
+            $m3u8Content .= "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"{$aud['group']}\",NAME=\"{$aud['name']}\",DEFAULT={$aud['default']},AUTOSELECT=YES,LANGUAGE=\"{$aud['lang']}\",URI=\"{$aud['uri']}\"\n";
+        }
+        $audioGroup = ",AUDIO=\"audio_group\"";
+    }
+
+    // Add subtitle tracks to master playlist
+    $subGroup = "";
+    if (!empty($subtitlePlaylists)) {
+        foreach ($subtitlePlaylists as $sub) {
+            $m3u8Content .= "#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"{$sub['group']}\",NAME=\"{$sub['name']}\",DEFAULT={$sub['default']},AUTOSELECT={$sub['default']},LANGUAGE=\"{$sub['lang']}\",URI=\"{$sub['uri']}\"\n";
+        }
+        $subGroup = ",SUBTITLES=\"subs\"";
+    }
+
+    foreach ($masterPlaylistEntries as $entry) {
+        $m3u8Content .= "#EXT-X-STREAM-INF:BANDWIDTH={$entry['bandwidth']},RESOLUTION={$entry['resolution']}{$audioGroup}{$subGroup}\n";
+        $m3u8Content .= "{$entry['playlist']}\n";
+    }
+
+    file_put_contents($masterPlaylistPath, $m3u8Content);
+
+    // Upload master.m3u8 if B2 is enabled (overwrite it)
+    $hlsPlaylistUrl = 'Output/' . $streamId . '/master.m3u8';
+    if ($b2Client) {
+        try {
+            file_put_contents($logFilePath, "Uploading master.m3u8 to B2...\n", FILE_APPEND);
+            $publicMasterUrl = $b2Client->uploadFile($masterPlaylistPath, "Output/{$streamId}/master.m3u8");
+            $hlsPlaylistUrl = $publicMasterUrl;
+        } catch (Exception $e) {
+            file_put_contents($logFilePath, "Failed to upload master playlist to B2: " . $e->getMessage() . "\n", FILE_APPEND);
+        }
+    }
+
+    // Save/Update master playlist path into database and transition status to 'ready'
+    $updStatus = $pdo->prepare("UPDATE `streams` SET `status` = 'ready', `hls_playlist_url` = :url WHERE `id` = :id");
+    $updStatus->execute([
+        ':url' => $hlsPlaylistUrl,
+        ':id' => $streamId
+    ]);
+    
+    file_put_contents($logFilePath, "Manifest updated. Stream status: READY. Playlist URL: {$hlsPlaylistUrl}\n", FILE_APPEND);
 }
