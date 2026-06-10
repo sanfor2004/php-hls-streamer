@@ -95,15 +95,27 @@ function renderLayoutHeader(?string $dbError, array $settings, string $dbFile, s
       <link rel="preconnect" href="https://fonts.googleapis.com">
       <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
       <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-
-      <!-- Tailwind CSS Engine -->
-      <script src="https://cdn.tailwindcss.com"></script>
       
       <!-- Bootstrap Icons CDN -->
       <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
       
       <!-- Video.js Player dependencies for modal HLS previewing -->
       <link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet" />
+
+      <!-- Tailwind CSS Engine -->
+      <script>
+        // Suppress Tailwind Play CDN production warning in console
+        (function() {
+          const originalWarn = console.warn;
+          console.warn = function(...args) {
+            if (args[0] && typeof args[0] === 'string' && args[0].includes('cdn.tailwindcss.com')) {
+              return;
+            }
+            originalWarn.apply(console, args);
+          };
+        })();
+      </script>
+      <script src="https://cdn.tailwindcss.com"></script>
 
       <script>
         tailwind.config = {
@@ -362,8 +374,8 @@ function renderLayoutFooter(): void {
             </button>
           </div>
 
-          <div class="bg-black aspect-video flex items-center justify-center">
-            <iframe id="preview-iframe" src="" allowfullscreen class="w-full h-full border-none"></iframe>
+          <div class="bg-black aspect-video flex items-center justify-center" id="preview-iframe-container">
+            <!-- Dynamic iframe injected here to prevent Quirks Mode warnings -->
           </div>
         </div>
       </div>

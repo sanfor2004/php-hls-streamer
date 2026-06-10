@@ -180,8 +180,7 @@ header('Expires: Thu, 01 Jan 1970 00:00:00 GMT');
       <!-- Custom bespoken controls overlay panel matching the reference screenshot exactly -->
       <div class="custom-controls-container" id="custom-controls-hud">
 
-        <!-- Watermark label on top of Time Indicators -->
-        <div class="custom-watermark-left-down">Ahmed Streamer Player</div>
+
 
         <!-- Time Indicators placed above timeline -->
         <div class="custom-time-labels">
@@ -213,7 +212,6 @@ header('Expires: Thu, 01 Jan 1970 00:00:00 GMT');
                 }
                 ?>
               </span>
-              <span class="custom-video-subtitle">Ahmed Streamer player</span>
             </div>
           </div>
 

@@ -68,21 +68,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Preview Modal DOM Selections
   const modalOverlay = document.getElementById('preview-modal');
-  const previewIframe = document.getElementById('preview-iframe');
+  const iframeContainer = document.getElementById('preview-iframe-container');
   const modalTitle = document.getElementById('modal-stream-title');
 
   window.openPreviewModal = function(streamId, streamTitle) {
+    if (!modalOverlay || !iframeContainer || !modalTitle) return;
     modalTitle.textContent = `Preview: ${streamTitle}`;
-    previewIframe.src = `stream?id=${streamId}`;
+    iframeContainer.innerHTML = `<iframe id="preview-iframe" src="stream?id=${streamId}" allowfullscreen></iframe>`;
     modalOverlay.style.display = 'flex';
     modalOverlay.offsetHeight; // trigger reflow
     modalOverlay.classList.add('active');
   };
 
   window.closePreviewModal = function() {
+    if (!modalOverlay || !iframeContainer) return;
     modalOverlay.classList.remove('active');
     setTimeout(() => {
-      previewIframe.src = '';
+      iframeContainer.innerHTML = '';
       modalOverlay.style.display = 'none';
     }, 300);
   };

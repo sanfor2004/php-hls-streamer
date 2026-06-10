@@ -910,8 +910,8 @@ function renderUploadDashboard(?string $dbError, ?PDO $pdo): void
             </button>
           </div>
           <div class="modal-body">
-            <div class="iframe-container">
-              <iframe id="preview-iframe" src="" allowfullscreen></iframe>
+            <div class="iframe-container" id="preview-iframe-container">
+              <!-- Dynamic iframe injected here to prevent Quirks Mode warnings -->
             </div>
           </div>
         </div>

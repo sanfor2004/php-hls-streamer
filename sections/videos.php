@@ -4,9 +4,26 @@ declare(strict_types=1);
 <!-- TAB 1: VIDEOS REGISTRY TABLE -->
 <section id="tab-videos" class="tab-content active flex flex-col gap-6">
   <div class="w-full glassmorphic rounded-2xl overflow-hidden shadow-2xl">
-    <div class="px-6 py-5 border-b border-slate-800 bg-slate-900 bg-opacity-35 flex items-center justify-between">
-      <h3 class="font-display font-bold text-lg text-white">Stream Catalog Directory</h3>
-      <button onclick="refreshStreamsTable()" class="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-2 border border-slate-700/60">
+    <div class="px-6 py-5 border-b border-slate-800 bg-slate-900 bg-opacity-35 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div class="flex items-center gap-4 flex-wrap">
+        <h3 class="font-display font-bold text-lg text-white">Stream Catalog Directory</h3>
+        
+        <!-- Bulk actions container -->
+        <div id="bulk-actions-container" class="hidden items-center gap-2 px-3 py-1.5 bg-slate-950/60 border border-slate-800 rounded-xl transition-all duration-300">
+          <span class="text-xs text-slate-400 font-mono"><span id="selected-count" class="text-brand-orange font-bold">0</span> selected</span>
+          <div class="h-4 w-px bg-slate-800 mx-1"></div>
+          <button onclick="bulkCopyStreamLinks()" class="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 hover:bg-brand-orange/10 hover:border-brand-orange/30 text-slate-300 hover:text-brand-orange text-xs font-semibold flex items-center gap-1.5 transition-all" title="Copy player links for all selected streams">
+            <i class="bi bi-link-45deg"></i> Player Links
+          </button>
+          <button onclick="bulkCopyHlsLinks()" class="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 hover:bg-brand-orange/10 hover:border-brand-orange/30 text-slate-300 hover:text-brand-orange text-xs font-semibold flex items-center gap-1.5 transition-all" title="Copy HLS (.m3u8) links for all selected streams">
+            <i class="bi bi-file-earmark-play"></i> HLS Links
+          </button>
+          <button onclick="bulkCopyIframeCodes()" class="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 hover:bg-brand-orange/10 hover:border-brand-orange/30 text-slate-300 hover:text-brand-orange text-xs font-semibold flex items-center gap-1.5 transition-all" title="Copy iframe embed codes for all selected streams">
+            <i class="bi bi-code-slash"></i> Embed Codes
+          </button>
+        </div>
+      </div>
+      <button onclick="refreshStreamsTable()" class="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-2 border border-slate-700/60 self-start sm:self-auto">
         <i class="bi bi-arrow-clockwise"></i> Refresh Catalog
       </button>
     </div>
@@ -16,6 +33,9 @@ declare(strict_types=1);
       <table class="w-full min-w-[900px] text-left border-collapse text-sm">
         <thead>
           <tr class="bg-slate-950/40 text-slate-400 font-semibold font-display text-xs tracking-wider border-b border-slate-800">
+            <th class="py-4 px-6 w-12 text-center">
+              <input type="checkbox" id="select-all-streams" class="rounded border-slate-700 bg-slate-900 text-brand-orange focus:ring-brand-orange focus:ring-offset-slate-900 cursor-pointer" onclick="toggleSelectAllStreams(this)">
+            </th>
             <th class="py-4 px-6">Stream Title (Double-click to inline edit)</th>
             <th class="py-4 px-6">System ID / Filename</th>
             <th class="py-4 px-6">Telemetry Status</th>
@@ -26,7 +46,7 @@ declare(strict_types=1);
         </thead>
         <tbody id="streams-table-body" class="divide-y divide-slate-800/40 text-slate-300 font-medium">
           <tr>
-            <td colspan="6" class="py-12 text-center text-slate-500 flex flex-col items-center justify-center gap-3">
+            <td colspan="7" class="py-12 text-center text-slate-500 flex flex-col items-center justify-center gap-3">
               <div class="w-8 h-8 rounded-full border-2 border-brand-orange border-t-transparent animate-spin"></div>
               <span class="font-mono text-xs">Querying database streams registry...</span>
             </td>

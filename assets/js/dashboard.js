@@ -530,6 +530,17 @@ document.addEventListener('DOMContentLoaded', () => {
   const tableBody = document.getElementById('streams-table-body');
   
   window.refreshStreamsTable = function () {
+    // Reset master checkbox
+    const masterCheckbox = document.getElementById('select-all-streams');
+    if (masterCheckbox) masterCheckbox.checked = false;
+    
+    // Hide bulk actions container
+    const bulkContainer = document.getElementById('bulk-actions-container');
+    if (bulkContainer) {
+      bulkContainer.classList.remove('flex');
+      bulkContainer.classList.add('hidden');
+    }
+
     fetch('api?action=list')
       .then(res => res.json())
       .then(data => {
@@ -541,7 +552,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.length === 0) {
           tableBody.innerHTML = `
             <tr>
-              <td colspan="6" class="py-12 text-center text-slate-500 font-mono text-xs">No video stream records in registry.</td>
+              <td colspan="7" class="py-12 text-center text-slate-500 font-mono text-xs">No video stream records in registry.</td>
             </tr>
           `;
           updateMetricsHUD(0, 0);
@@ -616,7 +627,14 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
           }
 
+          const isReady = stream.status === 'ready';
           tr.innerHTML = `
+            <td class="py-4 px-6 text-center w-12">
+              <input type="checkbox" class="stream-row-checkbox rounded border-slate-700 bg-slate-900 text-brand-orange focus:ring-brand-orange focus:ring-offset-slate-900 cursor-pointer" 
+                value="${stream.id}" 
+                ${isReady ? '' : 'disabled title="Stream is not ready"'}
+                onchange="updateBulkSelectionState()">
+            </td>
             <td class="py-4 px-6 relative max-w-[280px]">
               <div class="flex items-center gap-3">
                 <div class="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500">
@@ -685,7 +703,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (tableBody) {
           tableBody.innerHTML = `
             <tr>
-              <td colspan="6" class="py-8 text-center text-rose-500 font-mono text-xs">Failed to fetch streams catalog: ${err.message}</td>
+              <td colspan="7" class="py-8 text-center text-rose-500 font-mono text-xs">Failed to fetch streams catalog: ${err.message}</td>
             </tr>
           `;
         }
@@ -949,15 +967,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // PREVIEW MODAL PLAYER
   // -------------------------------------------------------------
   const modalOverlay = document.getElementById('preview-modal');
-  const previewIframe = document.getElementById('preview-iframe');
+  const iframeContainer = document.getElementById('preview-iframe-container');
   const modalTitle = document.getElementById('preview-modal-title');
   const modalCard = document.getElementById('preview-modal-card');
 
   window.openPreviewModal = function(streamId, streamTitle) {
-    if (!modalOverlay || !previewIframe || !modalTitle || !modalCard) return;
+    if (!modalOverlay || !iframeContainer || !modalTitle || !modalCard) return;
     
     modalTitle.textContent = `Streaming Preview: ${streamTitle}`;
-    previewIframe.src = `stream?id=${streamId}`;
+    iframeContainer.innerHTML = `<iframe id="preview-iframe" src="stream?id=${streamId}" allowfullscreen class="w-full h-full border-none"></iframe>`;
     
     modalOverlay.classList.remove('opacity-0', 'pointer-events-none');
     modalOverlay.classList.add('opacity-100');
@@ -967,7 +985,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   window.closePreviewModal = function() {
-    if (!modalOverlay || !previewIframe || !modalCard) return;
+    if (!modalOverlay || !iframeContainer || !modalCard) return;
     
     modalCard.classList.remove('scale-100');
     modalCard.classList.add('scale-95');
@@ -976,7 +994,7 @@ document.addEventListener('DOMContentLoaded', () => {
     modalOverlay.classList.add('opacity-0', 'pointer-events-none');
     
     setTimeout(() => {
-      previewIframe.src = '';
+      iframeContainer.innerHTML = '';
     }, 300);
   };
 
@@ -994,6 +1012,131 @@ document.addEventListener('DOMContentLoaded', () => {
   // -------------------------------------------------------------
   // CLIPBOARD UTILITY FUNCTIONS
   // -------------------------------------------------------------
+  window.getSelectedStreamIds = function () {
+    const checkboxes = document.querySelectorAll('.stream-row-checkbox:checked');
+    return Array.from(checkboxes).map(cb => cb.value);
+  };
+
+  window.toggleSelectAllStreams = function (masterCheckbox) {
+    const checkboxes = document.querySelectorAll('.stream-row-checkbox');
+    checkboxes.forEach(cb => {
+      if (!cb.disabled) {
+        cb.checked = masterCheckbox.checked;
+      }
+    });
+    updateBulkSelectionState();
+  };
+
+  window.updateBulkSelectionState = function () {
+    const checkboxes = document.querySelectorAll('.stream-row-checkbox:checked');
+    const totalCheckboxes = document.querySelectorAll('.stream-row-checkbox:not(:disabled)');
+    const masterCheckbox = document.getElementById('select-all-streams');
+    const bulkContainer = document.getElementById('bulk-actions-container');
+    const selectedCount = document.getElementById('selected-count');
+
+    if (masterCheckbox) {
+      if (totalCheckboxes.length > 0) {
+        masterCheckbox.checked = checkboxes.length === totalCheckboxes.length;
+      } else {
+        masterCheckbox.checked = false;
+      }
+    }
+
+    if (selectedCount) {
+      selectedCount.textContent = checkboxes.length;
+    }
+
+    if (bulkContainer) {
+      if (checkboxes.length > 0) {
+        bulkContainer.classList.remove('hidden');
+        bulkContainer.classList.add('flex');
+      } else {
+        bulkContainer.classList.remove('flex');
+        bulkContainer.classList.add('hidden');
+      }
+    }
+  };
+
+  window.bulkCopyStreamLinks = function () {
+    const ids = getSelectedStreamIds();
+    if (ids.length === 0) return;
+    
+    const links = ids.map(id => `${window.location.origin}/stream?id=${id}`).join('\n');
+    
+    navigator.clipboard.writeText(links)
+      .then(() => {
+        showToast(`${ids.length} player link(s) copied!`, "bi-link-45deg");
+      })
+      .catch(() => {
+        const textarea = document.createElement('textarea');
+        textarea.value = links;
+        textarea.style.position = 'fixed';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+          document.execCommand('copy');
+          showToast(`${ids.length} player link(s) copied!`, "bi-link-45deg");
+        } catch (err) {
+          showToast("Failed to copy player links.", "bi-exclamation-triangle", true);
+        }
+        document.body.removeChild(textarea);
+      });
+  };
+
+  window.bulkCopyHlsLinks = function () {
+    const ids = getSelectedStreamIds();
+    if (ids.length === 0) return;
+
+    const isLocalDev = (window.location.port === '8800' || window.location.port === '8080' || window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost');
+    const gatewayUrl = isLocalDev ? 'b2_gateway.php' : 'b2_gateway';
+    
+    const links = ids.map(id => `${window.location.origin}/${gatewayUrl}/${id}/master.m3u8`).join('\n');
+
+    navigator.clipboard.writeText(links)
+      .then(() => {
+        showToast(`${ids.length} HLS stream link(s) copied!`, "bi-file-earmark-play");
+      })
+      .catch(() => {
+        const textarea = document.createElement('textarea');
+        textarea.value = links;
+        textarea.style.position = 'fixed';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+          document.execCommand('copy');
+          showToast(`${ids.length} HLS stream link(s) copied!`, "bi-file-earmark-play");
+        } catch (err) {
+          showToast("Failed to copy HLS links.", "bi-exclamation-triangle", true);
+        }
+        document.body.removeChild(textarea);
+      });
+  };
+
+  window.bulkCopyIframeCodes = function () {
+    const ids = getSelectedStreamIds();
+    if (ids.length === 0) return;
+
+    const iframeCodes = ids.map(id => `<iframe src="${window.location.origin}/stream?id=${id}" width="640" height="360" frameborder="0" allowfullscreen></iframe>`).join('\n');
+
+    navigator.clipboard.writeText(iframeCodes)
+      .then(() => {
+        showToast(`${ids.length} embed code(s) copied!`, "bi-code-slash");
+      })
+      .catch(() => {
+        const textarea = document.createElement('textarea');
+        textarea.value = iframeCodes;
+        textarea.style.position = 'fixed';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+          document.execCommand('copy');
+          showToast(`${ids.length} embed code(s) copied!`, "bi-code-slash");
+        } catch (err) {
+          showToast("Failed to copy embed codes.", "bi-exclamation-triangle", true);
+        }
+        document.body.removeChild(textarea);
+      });
+  };
   window.copyIframeCode = function (streamId) {
     const embedCode = `<iframe src="${window.location.origin}/stream?id=${streamId}" width="640" height="360" frameborder="0" allowfullscreen></iframe>`;
     navigator.clipboard.writeText(embedCode)
@@ -1153,6 +1296,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // Real-time polling updates every 5 seconds to track background transcoding worker progress
   setInterval(() => {
     if (activeTab === 'videos' && !isUploadingActive) {
+      // Skip auto-refresh if the user has active selections to prevent wiping checked state
+      const checkedBoxes = document.querySelectorAll('.stream-row-checkbox:checked');
+      if (checkedBoxes.length > 0) return;
+      
       refreshStreamsTable();
     }
   }, 5000);
